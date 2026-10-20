@@ -376,11 +376,22 @@ LinkReport link_check(const std::vector<File> &files) {
       bool resolved = definitions.count(name) != 0,
            weak = ref.symbol->binding == 2;
       const bool synthesized = !resolved && name == "_GLOBAL_OFFSET_TABLE_";
-      errors = errors || (!resolved && !weak && !synthesized);
+      const auto &relocations = files[ref.file].relocations;
+      const bool active = std::any_of(
+          relocations.begin(), relocations.end(), [&](const auto &rel) {
+            return rel.symbol_table == ref.symbol->table &&
+                   rel.symbol_index == ref.symbol->index;
+          });
+      const bool requires_definition = active && !weak && !synthesized;
+      errors = errors || (!resolved && requires_definition);
       o << "{\"name\":" << quote(name)
         << ",\"file\":" << quote(files[ref.file].path)
-        << ",\"weak\":" << (weak ? "true" : "false") << ",\"resolution\":"
-        << quote(resolved      ? "resolved"
+        << ",\"weak\":" << (weak ? "true" : "false")
+        << ",\"active\":" << (active ? "true" : "false")
+        << ",\"requires_definition\":"
+        << (requires_definition ? "true" : "false") << ",\"resolution\":"
+        << quote(!active       ? "unused_undefined_declaration"
+                 : resolved    ? "resolved"
                  : synthesized ? "linker_synthesized_got"
                  : weak        ? "optional_undefined_weak"
                                : "unresolved_in_supplied_objects")

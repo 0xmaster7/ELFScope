@@ -21,7 +21,7 @@ build/elfscope link-check build/consumer.o build/provider.o
 python3 benchmarks/benchmark.py build/elfscope
 ```
 
-Configure a separate Debug build with `-DENABLE_SANITIZERS=ON` for ASan/UBSan. CI checks both Release and sanitized Debug builds. `link-check` always prints JSON and exits 2 for duplicate strong definitions or unresolved nonweak symbols within the supplied object set; malformed/unsupported input exits 1. Other commands accept `--json`, returning the full inspect schema.
+Configure a separate Debug build with `-DENABLE_SANITIZERS=ON` for ASan/UBSan. CI checks both Release and sanitized Debug builds. `link-check` always prints JSON and exits 2 for duplicate strong definitions or active unresolved nonweak references within the supplied object set; malformed/unsupported input exits 1. Other commands accept `--json`, returning the full inspect schema.
 
 Example captured from the commands above (GCC 13.3, Linux x86-64):
 
@@ -39,7 +39,7 @@ sections=13 symbols=7 relocations=3
 - Section names, types, flags, addresses, offsets, sizes, links, and alignment.
 - Static and dynamic symbol tables, including binding, type, visibility, definition status, value, size, and section index.
 - REL/RELA offsets, numeric and named relocation types, symbol table/index, target section, and explicit signed addends. REL implicit addends remain `null` because they are not decoded from target bytes.
-- Global/weak definitions and references, duplicate strong definitions, strong-over-common-over-weak selection, and merging common definitions by largest size. Unresolved weak symbols are optional; `_GLOBAL_OFFSET_TABLE_` is identified as linker-synthesized.
+- Global/weak definitions and references, duplicate strong definitions, strong-over-common-over-weak selection, and merging common definitions by largest size. Undefined declarations remain visible in `references`, with `active` and `requires_definition` flags. An active use is any matching relocation, including R_X86_64_NONE (GNU ld still resolves its symbol); unused declarations report `unused_undefined_declaration` without a fatal error. Unknown relocation types conservatively count as uses. Unresolved weak symbols are optional; `_GLOBAL_OFFSET_TABLE_` is identified as linker-synthesized.
 
 Unknown relocation types retain their numeric values. Non-ASCII name bytes are JSON-escaped as U+00xx, preserving byte values rather than assuming UTF-8.
 
@@ -58,9 +58,9 @@ python3 benchmarks/benchmark.py build/elfscope --smoke
 
 Fixtures are compiled from committed C sources. Additional generated C sources produce medium/large objects; executable, shared, and stripped outputs cover different table combinations. Three structural fixtures exercise REL records, empty symbol tables, and a sectionless ELF header; these are documented additions to real compiler output, not ABI-linkability claims.
 
-The independent oracle is GNU `readelf -hW -SW -sW -rW`. The harness compares numeric header fields; section names, types, addresses, offsets, sizes, entry sizes, links, info and alignment; symbol names, values, sizes, types, bindings, visibility and section indices; relocation offsets, types, symbol indices, relocation sections and explicit addends. It normalizes readelf's synthesized SECTION symbol names and dynamic symbol-version decorations. Each field comparison contributes once to the denominator. Section/symbol/relocation row counts are checked too.
+The independent oracle is GNU `readelf -hW -SW -sW -rW`. The harness compares numeric header fields; section names, types, addresses, offsets, sizes, entry sizes, links, info and alignment; symbol names, values, sizes, types, bindings, visibility and section indices; relocation offsets, types, symbol indices, relocation sections and explicit addends. It normalizes readelf's synthesized SECTION symbol names and dynamic symbol-version decorations. RELA addend presence and signed values are required from readelf section types; REL implicit addends must remain null. Relocation target sections, symbol tables, and the documented named/unknown type representation are checked independently of analyzer output. Each field comparison contributes once to the denominator. The original 44,696 checks become 53,561 on the unchanged 14-file corpus: 8,862 additional relationship checks and three REL-null checks. Section/symbol/relocation row counts are checked too.
 
-Seven object-set cases are compared with `ld -shared --no-undefined`. Malformed fixtures cover truncated headers/tables, bad magic/class/endianness/architecture, invalid sizes/counts/offsets, unterminated strings, and invalid symbol/relocation references. A fixed-seed 128-case mutation corpus checks rejection or successful JSON output without crashes; accepted mutations are not counted as malformed rejections or correctness proofs.
+Seven original object-set cases are compared with `ld -shared --no-undefined`. Benchmarks also execute the targeted gates. A separate `audit_regressions` CTest group adds eleven linker cases (including unused declarations, active/weak/NONE/GOT references and precedence) and fifteen deliberate JSON corruptions which the reference oracle must reject. Malformed fixtures cover truncated headers/tables, bad magic/class/endianness/architecture, invalid sizes/counts/offsets, unterminated strings, and invalid symbol/relocation references. A fixed-seed 128-case mutation corpus checks rejection or successful JSON output without crashes; accepted mutations are not counted as malformed rejections or correctness proofs.
 
 Actual counts, per-size latency medians, variability, fixture digests, environment, and raw timing samples: [benchmarks/results.md](benchmarks/results.md) and [results.json](benchmarks/results.json). The benchmark includes warm-cache file reads and parsing, excludes JSON output, uses a warmup plus 15 batches of 20 iterations, and reports decimal MB/s. No flaky timing threshold is used in CI.
 

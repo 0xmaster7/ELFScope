@@ -50,7 +50,7 @@ def reference(binary,path):
     compare(data['header']['machine'],62 if 'Advanced Micro Devices X86-64' in header else -1,'machine')
     kind=re.search(r'Type:\s+(\S+)',header)[1];compare(data['header']['type'],{'REL':1,'EXEC':2,'DYN':3}[kind],'type')
     section_text=command(['readelf','-SW',path]).stdout
-    section_rows=[]
+    section_rows=[]; reference_sections={}
     for line in section_text.splitlines():
         match=re.match(r'\s*\[\s*(\d+)\]\s+(.*)',line)
         if not match:continue
@@ -58,6 +58,7 @@ def reference(binary,path):
         if index==0:continue # NULL has no name; header count still independently checked.
         name,kind,address,offset,size,entsize=parts[:6];link,info,align=parts[-3:]
         section_rows.append(index);s=data['sections'][index]
+        reference_sections[name]={'index':index,'kind':kind,'link':int(link),'info':int(info)}
         section_types={'NULL':0,'PROGBITS':1,'SYMTAB':2,'STRTAB':3,'RELA':4,'HASH':5,'DYNAMIC':6,'NOTE':7,'NOBITS':8,'REL':9,'DYNSYM':11,'INIT_ARRAY':14,'FINI_ARRAY':15,'PREINIT_ARRAY':16,'GROUP':17,'SYMTAB SECTION INDICES':18,'GNU_HASH':0x6ffffff6,'VERSYM':0x6fffffff,'VERNEED':0x6ffffffe,'VERDEF':0x6ffffffd}
         compare(s['type'],section_types[kind],f'section[{index}].type')
         for key,expected in [('name',name),('address',int(address,16)),('offset',int(offset,16)),('size',int(size,16)),('entry_size',int(entsize,16)),('link',int(link)),('info',int(info)),('alignment',int(align))]: compare(s[key],expected,f'section[{index}].{key}')
@@ -67,34 +68,52 @@ def reference(binary,path):
     by_key={(s['table'],s['index']):s for s in data['symbols']}
     for line in symbols.splitlines():
         m=re.match(r"Symbol table '([^']+)' contains",line)
-        if m:table=next(s['index'] for s in data['sections'] if s['name']==m[1]);continue
+        if m:table=reference_sections[m[1]]['index']; table_kind=reference_sections[m[1]]['kind'];continue
         m=re.match(r'\s*(\d+):\s+([0-9a-f]+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)(?:\s+(.*))?$',line)
         if not m:continue
         index,value,size,kind,binding,visibility,ndx,name=m.groups();s=by_key[(table,int(index))];seen+=1
         # readelf decorates dynamic names with symbol-version metadata; parser intentionally returns raw .dynstr names.
         name=(name or '').split(' (',1)[0]
-        if data['sections'][table]['type']==11:name=name.split('@',1)[0]
+        if table_kind=='DYNSYM':name=name.split('@',1)[0]
         if kind=='SECTION':name='' # readelf synthesizes a section name when st_name==0.
         section={'UND':0,'ABS':65521,'COM':65522}.get(ndx)
         if section is None:section=int(ndx)
         for key,expected in [('name',name),('value',int(value,16)),('size',int(size)),('type',types[kind]),('binding',bindings[binding]),('visibility',vis[visibility]),('section',section)]:compare(s[key],expected,f'symbol[{table}:{index}].{key}')
     compare(len(data['symbols']),seen,'symbol row count')
     relocations=command(['readelf','-rW',path]).stdout;section=None;seen=0
+    # This is the documented named subset, independent of the executable's JSON.
+    named_types={0:'R_X86_64_NONE',1:'R_X86_64_64',2:'R_X86_64_PC32',4:'R_X86_64_PLT32',
+                 5:'R_X86_64_COPY',6:'R_X86_64_GLOB_DAT',7:'R_X86_64_JUMP_SLOT',
+                 8:'R_X86_64_RELATIVE',9:'R_X86_64_GOTPCREL',10:'R_X86_64_32',
+                 11:'R_X86_64_32S',16:'R_X86_64_DTPMOD64',17:'R_X86_64_DTPOFF64',
+                 18:'R_X86_64_TPOFF64',41:'R_X86_64_GOTPCRELX',42:'R_X86_64_REX_GOTPCRELX'}
     for line in relocations.splitlines():
         m=re.match(r"Relocation section '([^']+)'",line)
-        if m:section=next(s['index'] for s in data['sections'] if s['name']==m[1]);continue
+        if m:section=reference_sections[m[1]];continue
         m=re.match(r'\s*([0-9a-f]{8,16})\s+([0-9a-f]{8,16})\s+(\S+)\s*(.*)',line)
         if not m:continue
         offset,info,type_name,tail=m.groups();r=data['relocations'][seen];seen+=1;info=int(info,16)
-        for key,expected in [('section',section),('offset',int(offset,16)),('symbol_index',info>>32),('type',info&0xffffffff)]:compare(r[key],expected,f'relocation[{seen}].{key}')
-        if not r['type_name'].startswith('R_X86_64_UNKNOWN'):compare(r['type_name'],type_name,f'relocation[{seen}].type_name')
-        # RELA signed addend, including relative relocations without a symbol value/name column.
-        if r['addend'] is not None:
+        ref_type=info&0xffffffff
+        for key,expected in [('section',section['index']),('offset',int(offset,16)),
+                             ('symbol_index',info>>32),('type',ref_type),
+                             ('symbol_table',section['link']),('target_section',section['info'])]:
+            compare(r[key],expected,f'relocation[{seen}].{key}')
+        if ref_type in named_types:
+            assert named_types[ref_type]==type_name,('readelf named type',ref_type,type_name)
+            expected_name=type_name
+        else:expected_name='R_X86_64_UNKNOWN_'+str(ref_type)
+        compare(r['type_name'],expected_name,f'relocation[{seen}].type_name')
+        # Presence is dictated by readelf's section type, never the analyzer.
+        if section['kind']=='RELA':
+            assert 'addend' in r and type(r['addend']) is int,(path.name,'required integer RELA addend',r)
             m_add=re.search(r'([+-])\s+([0-9a-f]+)\s*$',tail)
             if m_add:expected=int(m_add[2],16)*(1 if m_add[1]=='+' else -1)
-            elif r['type']==8:expected=int(tail.strip(),16)
+            elif ref_type==8:expected=int(tail.strip(),16)
             else:raise AssertionError(('unrecognized readelf addend',line))
             compare(r['addend'],expected,f'relocation[{seen}].addend')
+        else:
+            assert section['kind']=='REL',section
+            compare(r['addend'],None,f'relocation[{seen}].implicit_addend')
     compare(len(data['relocations']),seen,'relocation row count')
     return data,checks
 
