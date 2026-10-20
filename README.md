@@ -47,7 +47,7 @@ Unknown relocation types retain their numeric values. Non-ASCII name bytes are J
 
 `include/elfscope.hpp` defines value-type results. `src/elfscope.cpp` implements a byte reader, validation, JSON serialization, and symbol-resolution analysis. `src/main.cpp` handles presentation and benchmarking. File streams and containers use RAII; integers are assembled explicitly from little-endian bytes. No file data is reinterpreted as a native ELF structure.
 
-Every read checks `offset <= length` and `size <= length - offset`; multiplication is checked before computing table extents. Headers and table entry sizes, string offsets/terminators, symbol section indices, symbol-table links, relocation links/targets/symbol indices, and record divisibility are validated. Input files are capped at 512 MiB. Extended ELF numbering and extended symbol section indices are rejected explicitly. Sectionless files and empty/missing symbol tables are valid.
+Every read checks `offset <= length` and `size <= length - offset`; multiplication is checked before computing table extents. Headers and table entry sizes, string offsets/terminators, symbol section indices, null-symbol records, string-table boundary NUL bytes, symbol-table links, relocation links/targets/symbol indices, relocatable target offsets, and record divisibility are validated. Input files are capped at 512 MiB. Extended ELF numbering and extended symbol section indices are rejected explicitly. Sectionless files and empty/missing symbol tables are valid.
 
 ## Tests and benchmarks
 
@@ -58,7 +58,7 @@ python3 benchmarks/benchmark.py build/elfscope --smoke
 
 Fixtures are compiled from committed C sources. Additional generated C sources produce medium/large objects; executable, shared, and stripped outputs cover different table combinations. Three structural fixtures exercise REL records, empty symbol tables, and a sectionless ELF header; these are documented additions to real compiler output, not ABI-linkability claims.
 
-The independent oracle is GNU `readelf -hW -SW -sW -rW`. The harness compares numeric header fields; section names, addresses, offsets, sizes, entry sizes, links, info and alignment; symbol names, values, sizes, types, bindings, visibility and section indices; relocation offsets, types, symbol indices, relocation sections and explicit addends. It normalizes readelf's synthesized SECTION symbol names and dynamic symbol-version decorations. Each field comparison contributes once to the denominator. Section/symbol/relocation row counts are checked too.
+The independent oracle is GNU `readelf -hW -SW -sW -rW`. The harness compares numeric header fields; section names, types, addresses, offsets, sizes, entry sizes, links, info and alignment; symbol names, values, sizes, types, bindings, visibility and section indices; relocation offsets, types, symbol indices, relocation sections and explicit addends. It normalizes readelf's synthesized SECTION symbol names and dynamic symbol-version decorations. Each field comparison contributes once to the denominator. Section/symbol/relocation row counts are checked too.
 
 Seven object-set cases are compared with `ld -shared --no-undefined`. Malformed fixtures cover truncated headers/tables, bad magic/class/endianness/architecture, invalid sizes/counts/offsets, unterminated strings, and invalid symbol/relocation references. A fixed-seed 128-case mutation corpus checks rejection or successful JSON output without crashes; accepted mutations are not counted as malformed rejections or correctness proofs.
 

@@ -58,6 +58,8 @@ def reference(binary,path):
         if index==0:continue # NULL has no name; header count still independently checked.
         name,kind,address,offset,size,entsize=parts[:6];link,info,align=parts[-3:]
         section_rows.append(index);s=data['sections'][index]
+        section_types={'NULL':0,'PROGBITS':1,'SYMTAB':2,'STRTAB':3,'RELA':4,'HASH':5,'DYNAMIC':6,'NOTE':7,'NOBITS':8,'REL':9,'DYNSYM':11,'INIT_ARRAY':14,'FINI_ARRAY':15,'PREINIT_ARRAY':16,'GROUP':17,'SYMTAB SECTION INDICES':18,'GNU_HASH':0x6ffffff6,'VERSYM':0x6fffffff,'VERNEED':0x6ffffffe,'VERDEF':0x6ffffffd}
+        compare(s['type'],section_types[kind],f'section[{index}].type')
         for key,expected in [('name',name),('address',int(address,16)),('offset',int(offset,16)),('size',int(size,16)),('entry_size',int(entsize,16)),('link',int(link)),('info',int(info)),('alignment',int(align))]: compare(s[key],expected,f'section[{index}].{key}')
     compare(len(section_rows),max(0,len(data['sections'])-1),'section row count')
     symbols=command(['readelf','-sW',path]).stdout;table=None;seen=0
@@ -109,12 +111,16 @@ def malformed(binary,path,directory):
     for n in range(shnum):
         at=shoff+n*64;kind=struct.unpack_from('<I',original,at+4)[0];sections.append((n,at,kind))
     _,symat,_=next(s for s in sections if s[2]==2);symoff=struct.unpack_from('<Q',original,symat+24)[0]
+    change('null_symbol',symoff+8,'<Q',1)
     change('symbol_link',symat+40,'<I',shnum);change('symbol_entry_size',symat+56,'<Q',1);change('symbol_name',symoff+24,'<I',2**32-1);change('symbol_section',symoff+24+6,'<H',shnum)
     _,relat,_=next(s for s in sections if s[2]==4);reloff=struct.unpack_from('<Q',original,relat+24)[0]
+    change('relocation_offset',reloff,'<Q',2**64-1)
     change('relocation_link',relat+40,'<I',shnum);change('relocation_target',relat+44,'<I',shnum);change('relocation_symbol',reloff+8,'<Q',(2**32-1)<<32);change('relocation_size',relat+32,'<Q',1)
     change('section_range',sections[1][1]+24,'<Q',2**64-1)
     shstr=struct.unpack_from('<H',original,62)[0];strat=shoff+64*shstr;stroff,strsize=struct.unpack_from('<QQ',original,strat+24)
+    change('string_table_first_byte',stroff,'B',120);change('string_table_last_byte',stroff+strsize-1,'B',120)
     data=bytearray(original);data[stroff:stroff+strsize]=b'x'*strsize;cases['unterminated_strings']=data
+    data=bytearray(original);struct.pack_into('<Q',data,32,1);struct.pack_into('<HH',data,54,56,1);cases['program_headers_overlap_header']=data
     for name,data in cases.items():
         broken=directory/'broken.elf';broken.write_bytes(data)
         result=command([binary,'inspect',broken,'--json'],check=False)
