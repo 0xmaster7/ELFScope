@@ -1,28 +1,30 @@
 # Measured ELFScope results
 
-Source commit: `d444bed0377ab46804941edbbd61a209b16ae1ca`; date: 2026-10-20T08:19:56.370241+00:00
+Source commit: `6f06c1a4d054a6722f2cb7aaaf82c463b875463d`; date: 2026-10-20T09:03:41.769123+00:00
 Environment: Linux-6.17.0-1022-azure-x86_64-with-glibc2.39; AMD EPYC 7763 64-Core Processor; g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0; GNU readelf (GNU Binutils for Ubuntu) 2.42
 
 One warmup parse; 15 samples of 20 file-open/read/parse iterations; steady_clock, microseconds per parse. Warm filesystem cache. Decimal MB/s = bytes / median microseconds. JSON serialization excluded.
 
-Validated 14 ELF files: 190 sections, 2328 symbols, 4431 relocations. Matched 44696/44696 supported-field comparisons against readelf (100.0%). Rejected 33 malformed files; link-check matched ld in 7/7 cases.
+Unchanged 14-file corpus: legacy 44696 checks plus 2 relationship fields per relocation (8862) and 3 explicit REL-null checks = 53561. RELA presence/type assertions strengthen existing checks without padding the denominator.
+
+Validated 14 ELF files: 190 sections, 2328 symbols, 4431 relocations. Matched 53561/53561 supported-field comparisons against readelf (100.0%). Rejected 33 malformed files; link-check matched ld in 7/7 cases.
 
 | Fixture | Bytes | Median µs | Min–max µs | MB/s |
 |---|---:|---:|---:|---:|
-| common.o | 968 | 6.05 | 6.02–7.41 | 160.03 |
-| consumer.o | 1472 | 6.65 | 6.63–8.24 | 221.29 |
-| duplicate.o | 1240 | 6.26 | 6.23–9.16 | 198.24 |
-| main.o | 1360 | 6.43 | 6.41–8.61 | 211.66 |
-| provider.o | 1272 | 6.66 | 6.32–8.02 | 190.88 |
-| weak.o | 1552 | 6.65 | 6.63–9.75 | 233.42 |
-| fixture.exe | 15952 | 12.19 | 11.93–15.17 | 1308.10 |
-| fixture.so | 15376 | 11.02 | 10.91–12.78 | 1395.46 |
-| stripped.o | 888 | 5.84 | 5.70–10.13 | 151.95 |
-| medium.o | 30664 | 28.13 | 26.91–30.45 | 1090.20 |
-| large.o | 299864 | 538.07 | 524.56–655.05 | 557.30 |
-| structural_rel.o | 1472 | 7.89 | 7.40–8.90 | 186.57 |
-| empty_symtab.o | 1472 | 6.16 | 6.13–8.66 | 239.11 |
-| sectionless.o | 64 | 5.67 | 5.47–6.50 | 11.29 |
+| common.o | 968 | 9.12 | 8.91–124.57 | 106.13 |
+| consumer.o | 1472 | 9.93 | 9.62–63.09 | 148.20 |
+| duplicate.o | 1240 | 9.61 | 9.23–101.21 | 128.98 |
+| main.o | 1360 | 10.34 | 9.65–112.47 | 131.52 |
+| provider.o | 1272 | 10.04 | 9.61–91.28 | 126.65 |
+| weak.o | 1552 | 10.03 | 9.68–113.01 | 154.79 |
+| fixture.exe | 15952 | 19.47 | 18.63–123.75 | 819.17 |
+| fixture.so | 15376 | 19.75 | 17.05–112.42 | 778.69 |
+| stripped.o | 888 | 9.06 | 8.15–91.99 | 98.06 |
+| medium.o | 30664 | 51.55 | 47.92–53.62 | 594.83 |
+| large.o | 299864 | 859.79 | 754.64–1620.91 | 348.76 |
+| structural_rel.o | 1472 | 9.92 | 9.70–11.47 | 148.37 |
+| empty_symtab.o | 1472 | 8.63 | 8.55–10.27 | 170.53 |
+| sectionless.o | 64 | 7.58 | 7.51–9.19 | 8.44 |
 
 ## Reproduction
 
